@@ -75,7 +75,7 @@ jobs:
           fi
 
       - name: Build APKs
-        run: ./gradlew --stacktrace :app:assembleDebug :app:assembleRelease
+        run: ./gradlew --stacktrace :app:assembleDebug
 
       - name: Collect release assets
         id: collect_apks
