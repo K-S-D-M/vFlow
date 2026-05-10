@@ -31,3 +31,6 @@ debug-signing.properties
 # Python local cache
 __pycache__/
 *.py[cod]
+.idea/
+.gradle/
+build/
