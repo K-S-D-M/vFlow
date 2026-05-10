@@ -87,15 +87,7 @@ jobs:
             \( -path "*/debug/*" -o -path "*/release/*" \) \
             -exec cp "{}" release-assets/ \;
 
-          mapping_path="app/build/outputs/mapping/release/mapping.txt"
-          mapping_asset="release-assets/${{ steps.meta.outputs.release_name }}_release_mapping.txt"
-          if [[ -f "${mapping_path}" ]]; then
-            cp "${mapping_path}" "${mapping_asset}"
-          else
-            echo "Release mapping file was not produced: ${mapping_path}" >&2
-            exit 1
-          fi
-
+          
           apk_count=$(find release-assets -maxdepth 1 -type f -name "*.apk" | wc -l | tr -d ' ')
           echo "apk_count=${apk_count}" >> "${GITHUB_OUTPUT}"
 
@@ -119,6 +111,4 @@ jobs:
           prerelease: true
           files: |
             release-assets/*.apk
-            release-assets/*_release_mapping.txt
-          fail_on_unmatched_files: true
           make_latest: false
