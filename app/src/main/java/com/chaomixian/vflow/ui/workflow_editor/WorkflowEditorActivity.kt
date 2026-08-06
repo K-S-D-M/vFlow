@@ -121,6 +121,13 @@ class WorkflowEditorActivity : BaseActivity() {
     private var currentlyExecutingViewHolder: RecyclerView.ViewHolder? = null
     private lateinit var inspectorInsertController: WorkflowInspectorInsertController
 
+    // ===== 编辑器底部日志面板 =====
+    private lateinit var editorLogPanel: View
+    private lateinit var editorLogToolbar: MaterialToolbar
+    private lateinit var editorLogScrollView: androidx.core.widget.NestedScrollView
+    private lateinit var editorLogTextView: android.widget.TextView
+    private var isEditorLogPanelExpanded = true
+
 
     // 用于保存和恢复状态的常量
     private val STATE_TRIGGER_STEPS = "state_trigger_steps"
@@ -137,6 +144,11 @@ class WorkflowEditorActivity : BaseActivity() {
         if (result.resultCode == Activity.RESULT_OK) {
             pendingExecutionWorkflow?.let {
                 executionTracker.beginExecutionTracking(it.id)
+                ensureEditorLogPanelVisible()
+                val startTime = java.text.SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+                executionTracker.appendLog(
+                    "[$startTime] ▶ 开始执行：${it.name}"
+                )
                 toast(getString(R.string.editor_toast_execution_start, it.name))
                 val executionInstanceId = WorkflowExecutor.execute(
                     workflow = it,
@@ -219,6 +231,7 @@ class WorkflowEditorActivity : BaseActivity() {
         setupDragAndDrop()
         setupUndoControls()
         setupPrimaryActions()
+        setupEditorLogPanel()
         observeExecutionState()
     }
 
@@ -230,6 +243,11 @@ class WorkflowEditorActivity : BaseActivity() {
         undoButton = findViewById(R.id.button_undo_edit)
         executeButton = findViewById(R.id.button_execute_workflow)
         recyclerView = findViewById(R.id.recycler_view_action_steps)
+        // 日志面板
+        editorLogPanel = findViewById(R.id.editor_log_panel)
+        editorLogToolbar = findViewById(R.id.editor_log_toolbar)
+        editorLogScrollView = findViewById(R.id.editor_log_scroll_view)
+        editorLogTextView = findViewById(R.id.editor_log_text_view)
         configureExecuteButtonShadow()
     }
 
@@ -240,7 +258,9 @@ class WorkflowEditorActivity : BaseActivity() {
             updateExecuteButton = ::updateExecuteButton,
             highlightStep = ::highlightStep,
             highlightStepAsFailed = ::highlightStepAsFailed,
-            clearHighlight = ::clearHighlight
+            clearHighlight = ::clearHighlight,
+            onLogUpdated = { log -> appendEditorLog(log, scrollToBottom = true) },
+            onExecutionFinished = { ensureEditorLogPanelVisible() }
         )
     }
 
@@ -337,6 +357,92 @@ class WorkflowEditorActivity : BaseActivity() {
         editorMoreButton.setOnClickListener { showEditorMoreOptionsSheet() }
         selectionModeButton.setOnClickListener { showEditorToolsMenu(it) }
         updateSelectionUi()
+    }
+
+    // ==========================
+    // 编辑器底部日志面板
+    // ==========================
+    private fun setupEditorLogPanel() {
+        // 初始化空态提示
+        if (editorLogTextView.text.isNullOrEmpty()) {
+            editorLogTextView.text = getString(R.string.editor_log_panel_hint)
+        }
+        // 展开/折叠按钮
+        editorLogToolbar.setNavigationOnClickListener {
+            toggleEditorLogPanel()
+        }
+        // 复制按钮
+        editorLogToolbar.findViewById<View>(R.id.editor_log_copy_btn)?.setOnClickListener {
+            copyEditorLogToClipboard()
+        } ?: run {
+            (0 until editorLogToolbar.childCount)
+                .mapNotNull { editorLogToolbar.getChildAt(it) as? com.google.android.material.button.MaterialButton }
+                .firstOrNull { it.id == R.id.editor_log_copy_btn }
+                ?.setOnClickListener { copyEditorLogToClipboard() }
+        }
+        // 清空按钮
+        editorLogToolbar.findViewById<View>(R.id.editor_log_clear_btn)?.setOnClickListener {
+            clearEditorLog()
+        } ?: run {
+            (0 until editorLogToolbar.childCount)
+                .mapNotNull { editorLogToolbar.getChildAt(it) as? com.google.android.material.button.MaterialButton }
+                .firstOrNull { it.id == R.id.editor_log_clear_btn }
+                ?.setOnClickListener { clearEditorLog() }
+        }
+    }
+
+    private fun toggleEditorLogPanel() {
+        isEditorLogPanelExpanded = !isEditorLogPanelExpanded
+        editorLogScrollView.visibility = if (isEditorLogPanelExpanded) View.VISIBLE else View.GONE
+        editorLogToolbar.navigationIcon = if (isEditorLogPanelExpanded) {
+            androidx.core.content.ContextCompat.getDrawable(this, R.drawable.rounded_keyboard_arrow_up_24)
+        } else {
+            androidx.core.content.ContextCompat.getDrawable(this, R.drawable.rounded_keyboard_arrow_down_24)
+        }
+    }
+
+    private fun ensureEditorLogPanelVisible() {
+        if (editorLogPanel.visibility != View.VISIBLE) {
+            editorLogPanel.visibility = View.VISIBLE
+            // 调整列表底部 padding（给浮动工具栏+日志面板留出空间）
+            val bottomPx = (112 * resources.displayMetrics.density).toInt()
+            recyclerView.setPadding(
+                recyclerView.paddingLeft,
+                recyclerView.paddingTop,
+                recyclerView.paddingRight,
+                bottomPx
+            )
+        }
+        if (!isEditorLogPanelExpanded) {
+            toggleEditorLogPanel()
+        }
+    }
+
+    private fun appendEditorLog(content: CharSequence, scrollToBottom: Boolean = false) {
+        ensureEditorLogPanelVisible()
+        editorLogTextView.text = content
+        if (scrollToBottom) {
+            editorLogScrollView.post {
+                editorLogScrollView.fullScroll(View.FOCUS_DOWN)
+            }
+        }
+    }
+
+    private fun clearEditorLog() {
+        executionTracker.clearLogs()
+        editorLogTextView.text = getString(R.string.editor_log_panel_hint)
+    }
+
+    private fun copyEditorLogToClipboard() {
+        val log = executionTracker.getCurrentLog().toString()
+        if (log.isEmpty()) {
+            toast(getString(R.string.text_no_detailed_logs))
+            return
+        }
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("vFlow execution log", log)
+        clipboard.setPrimaryClip(clip)
+        toast(getString(R.string.editor_log_copied))
     }
 
     private fun handleExecuteButtonClick() {
@@ -850,6 +956,12 @@ class WorkflowEditorActivity : BaseActivity() {
         val missingPermissions = PermissionManager.getMissingPermissions(this, workflow)
         if (missingPermissions.isEmpty()) {
             executionTracker.beginExecutionTracking(workflow.id)
+            ensureEditorLogPanelVisible()
+            // 追加执行开始提示
+            val startTime = java.text.SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+            executionTracker.appendLog(
+                "[$startTime] ▶ 开始执行：${workflow.name}"
+            )
             toast(getString(R.string.editor_toast_execution_start, workflow.name))
             val executionInstanceId = WorkflowExecutor.execute(
                 workflow = workflow,
@@ -1634,11 +1746,18 @@ class WorkflowEditorActivity : BaseActivity() {
         delayedExecuteHandler.postDelayed({
             val missingPermissions = PermissionManager.getMissingPermissions(this, workflow)
             if (missingPermissions.isEmpty()) {
-                WorkflowExecutor.execute(
+                executionTracker.beginExecutionTracking(workflow.id)
+                ensureEditorLogPanelVisible()
+                val startTime = java.text.SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+                executionTracker.appendLog(
+                    "[$startTime] ▶ 开始执行（${delayText}延迟）：${workflow.name}"
+                )
+                val instanceId = WorkflowExecutor.execute(
                     workflow = workflow,
                     context = this,
                     triggerStepId = workflow.manualTrigger()?.id
                 )
+                executionTracker.finishExecutionLaunch(instanceId)
             }
         }, delayMs)
     }

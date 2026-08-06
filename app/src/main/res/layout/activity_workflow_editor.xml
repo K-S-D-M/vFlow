@@ -78,9 +78,87 @@
             android:clipToPadding="false"
             android:paddingTop="16dp"
             android:paddingHorizontal="16dp"
-            android:paddingBottom="112dp"
+            android:paddingBottom="8dp"
             tools:itemCount="3"
             tools:listitem="@layout/item_action_step" />
+
+        <!-- ===== 执行日志面板（可折叠） ===== -->
+        <LinearLayout
+            android:id="@+id/editor_log_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="?attr/colorSurface"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <!-- 日志标题栏 -->
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/editor_log_toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:background="?attr/colorSurfaceVariant"
+                app:contentInsetStart="0dp"
+                app:contentInsetStartWithNavigation="0dp"
+                app:navigationIcon="@drawable/rounded_keyboard_arrow_up_24"
+                app:title="@string/editor_log_panel_title"
+                app:titleTextAppearance="?attr/textAppearanceTitleSmall">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="end"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/editor_log_copy_btn"
+                        style="?attr/borderlessButtonStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/editor_log_panel_copy"
+                        android:text="@string/editor_log_panel_copy"
+                        app:icon="@drawable/rounded_content_copy_24"
+                        app:iconSize="18dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/editor_log_clear_btn"
+                        style="?attr/borderlessButtonStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/editor_log_panel_clear"
+                        android:text="@string/editor_log_panel_clear"
+                        app:icon="@drawable/rounded_delete_24"
+                        app:iconSize="18dp" />
+                </LinearLayout>
+            </com.google.android.material.appbar.MaterialToolbar>
+
+            <!-- 日志内容区 -->
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/editor_log_scroll_view"
+                android:layout_width="match_parent"
+                android:layout_height="210dp"
+                android:background="?attr/colorSurface"
+                android:fillViewport="true">
+
+                <TextView
+                    android:id="@+id/editor_log_text_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:lineSpacingExtra="3dp"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="12dp"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp"
+                    tools:text="[提示] 执行工作流后，日志会显示在这里…" />
+            </androidx.core.widget.NestedScrollView>
+
+            <com.google.android.material.divider.MaterialDivider
+                android:layout_width="match_parent"
+                android:layout_height="1dp" />
+        </LinearLayout>
 
     </LinearLayout>
 

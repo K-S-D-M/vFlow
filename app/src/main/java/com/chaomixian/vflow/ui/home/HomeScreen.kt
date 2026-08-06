@@ -37,6 +37,10 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,9 +61,15 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
 import com.chaomixian.vflow.R
 import com.chaomixian.vflow.core.execution.ExecutionStateBus
@@ -871,75 +881,389 @@ private fun LogDetailDialog(
 ) {
     val context = LocalContext.current
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
-    val scrollState = rememberScrollState()
-    AlertDialog(
+    val summaryScrollState = rememberScrollState()
+    val detailsScrollState = rememberScrollState()
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val tabs = listOf(
+        stringResource(R.string.log_tab_summary),
+        stringResource(R.string.log_tab_details)
+    )
+
+    // 从详细日志中解析统计信息
+    val parsedStats = remember(log.detailedLog) { parseDetailedLog(log.detailedLog) }
+
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.button_close))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { onDelete(log) }) {
-                Text(stringResource(R.string.common_delete))
-            }
-        },
-        title = {
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 620.dp)
+        ) {
             Column {
-                Text(
-                    text = stringResource(R.string.log_details_title, log.workflowName),
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                Text(
-                    text = stringResource(
-                        R.string.log_execution_time,
-                        dateFormat.format(Date(log.timestamp))
-                    ),
-                    modifier = Modifier.padding(top = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 480.dp)
-                    .verticalScroll(scrollState)
-            ) {
-                Text(
-                    text = stringResource(R.string.label_basic_info),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                LogDetailCodeBlock(
-                    text = log.resolveMessage(context) ?: stringResource(R.string.log_no_detail_message),
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                Text(
-                    text = stringResource(R.string.log_workflow_id, log.workflowId),
-                    modifier = Modifier.padding(top = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-                Text(
-                    text = stringResource(R.string.text_execution_details),
-                    modifier = Modifier.padding(top = 16.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                LogDetailCodeBlock(
-                    text = if (!log.detailedLog.isNullOrEmpty()) {
-                        log.detailedLog
-                    } else {
-                        stringResource(R.string.text_no_detailed_logs)
+                // ===== 顶部标题区 =====
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val statusIcon = when (log.status) {
+                            LogStatus.SUCCESS -> R.drawable.ic_log_success
+                            LogStatus.FAILURE, LogStatus.CANCELLED -> R.drawable.ic_log_failure
+                        }
+                        val statusTint = when (log.status) {
+                            LogStatus.SUCCESS -> MaterialTheme.colorScheme.primary
+                            LogStatus.FAILURE, LogStatus.CANCELLED -> MaterialTheme.colorScheme.error
+                        }
+                        Icon(
+                            painter = painterResource(statusIcon),
+                            contentDescription = null,
+                            tint = statusTint,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Text(
+                            text = log.workflowName,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .padding(start = 12.dp)
+                                .weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        StatusChip(log.status)
+                        Text(
+                            text = dateFormat.format(Date(log.timestamp)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 12.dp)
+                        )
+                    }
+                }
+
+                // ===== Tab 切换 =====
+                ScrollableTabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     },
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                    divider = {},
+                    edgePadding = 16.dp
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = {
+                                Text(
+                                    text = title,
+                                    fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        )
+                    }
+                }
+
+                // ===== Tab 内容 =====
+                androidx.compose.animation.AnimatedVisibility(visible = selectedTab == 0) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .verticalScroll(summaryScrollState)
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                    ) {
+                        // 状态消息卡片
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = when (log.status) {
+                                    LogStatus.SUCCESS -> MaterialTheme.colorScheme.primaryContainer
+                                    LogStatus.FAILURE -> MaterialTheme.colorScheme.errorContainer
+                                    LogStatus.CANCELLED -> MaterialTheme.colorScheme.tertiaryContainer
+                                }
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = log.resolveMessage(context)
+                                    ?: stringResource(R.string.log_no_detail_message),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+
+                        // 统计信息网格
+                        SummaryGrid(
+                            items = buildList {
+                                add(
+                                    SummaryItem(
+                                        label = stringResource(R.string.log_label_workflow),
+                                        value = log.workflowName
+                                    )
+                                )
+                                parsedStats.durationMs?.let {
+                                    add(
+                                        SummaryItem(
+                                            label = stringResource(R.string.log_label_duration),
+                                            value = stringResource(R.string.log_value_ms, it)
+                                        )
+                                    )
+                                }
+                                parsedStats.stepCount?.let {
+                                    add(
+                                        SummaryItem(
+                                            label = stringResource(R.string.log_label_step_count),
+                                            value = stringResource(R.string.log_value_steps, it)
+                                        )
+                                    )
+                                }
+                                if (log.status == LogStatus.FAILURE && parsedStats.failedStep != null) {
+                                    add(
+                                        SummaryItem(
+                                            label = stringResource(R.string.log_label_failed_step),
+                                            value = parsedStats.failedStep,
+                                            isError = true
+                                        )
+                                    )
+                                }
+                                add(
+                                    SummaryItem(
+                                        label = "工作流 ID",
+                                        value = log.workflowId,
+                                        mono = true
+                                    )
+                                )
+                            }
+                        )
+                    }
+                }
+
+                androidx.compose.animation.AnimatedVisibility(visible = selectedTab == 1) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                    ) {
+                        StyledLogText(
+                            text = log.detailedLog
+                                ?: stringResource(R.string.text_no_detailed_logs),
+                            scrollState = detailsScrollState,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // ===== 底部按钮 =====
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 4.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { onDelete(log) }) {
+                        Text(
+                            stringResource(R.string.common_delete),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.FilledTonalButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.button_close))
+                    }
+                }
             }
         }
-    )
+    }
+}
+
+@Composable
+private fun StatusChip(status: LogStatus) {
+    val (text, containerColor, contentColor) = when (status) {
+        LogStatus.SUCCESS -> Triple(
+            stringResource(R.string.text_execution_success),
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        LogStatus.FAILURE -> Triple(
+            "执行失败",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.onErrorContainer
+        )
+        LogStatus.CANCELLED -> Triple(
+            stringResource(R.string.log_message_execution_cancelled),
+            MaterialTheme.colorScheme.tertiaryContainer,
+            MaterialTheme.colorScheme.onTertiaryContainer
+        )
+    }
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
+}
+
+private data class SummaryItem(
+    val label: String,
+    val value: String,
+    val isError: Boolean = false,
+    val mono: Boolean = false
+)
+
+private data class ParsedStats(
+    val durationMs: Long? = null,
+    val stepCount: Int? = null,
+    val failedStep: String? = null
+)
+
+private fun parseDetailedLog(raw: String?): ParsedStats {
+    if (raw.isNullOrEmpty()) return ParsedStats()
+    var duration: Long? = null
+    var steps: Int? = null
+    var failed: String? = null
+    val stepLineRegex = Regex("""\[#(\d+)\]\s*->""")
+    val stepNumbers = stepLineRegex.findAll(raw).mapNotNull { it.groupValues[1].toIntOrNull() }.toList()
+    if (stepNumbers.isNotEmpty()) {
+        steps = stepNumbers.maxOrNull()
+    }
+    val failedMatch = Regex("""步骤\s*#?(\d+)|在步骤\s*#?(\d+)|#(\d+)[^\n]*失败""").find(raw)
+    if (failedMatch != null) {
+        val n = failedMatch.groupValues.drop(1).firstOrNull { it.isNotEmpty() }
+        if (n != null) failed = "#$n"
+    }
+    return ParsedStats(duration, steps, failed)
+}
+
+@Composable
+private fun SummaryGrid(items: List<SummaryItem>) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        items.forEach { item ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp)
+            ) {
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(96.dp)
+                )
+                val valueColor = when {
+                    item.isError -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurface
+                }
+                Text(
+                    text = item.value,
+                    style = if (item.mono) androidx.compose.material3.Typography().bodySmall.copy(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    ) else MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = valueColor,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            androidx.compose.material3.Divider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                thickness = 0.5.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun StyledLogText(
+    text: String,
+    scrollState: androidx.compose.foundation.ScrollState,
+    modifier: Modifier = Modifier
+) {
+    val lines = text.lines()
+    val styledLines = remember(text) { lines.map { parseLogLine(it) } }
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(16.dp)
+            )
+    ) {
+        androidx.compose.foundation.text.BasicText(
+            text = buildAnnotatedString {
+                styledLines.forEachIndexed { idx, line ->
+                    withStyle(
+                        androidx.compose.ui.text.SpanStyle(
+                            color = when (line.level) {
+                                LogLineLevel.ERROR -> MaterialTheme.colorScheme.error
+                                LogLineLevel.WARN -> androidx.compose.ui.graphics.Color(0xFFFFB74D.toInt())
+                                LogLineLevel.INFO -> MaterialTheme.colorScheme.onSurfaceVariant
+                                LogLineLevel.DEBUG -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                                LogLineLevel.PLAIN -> MaterialTheme.colorScheme.onSurface
+                            },
+                            fontWeight = if (line.level == LogLineLevel.ERROR) FontWeight.Bold else FontWeight.Normal
+                        )
+                    ) {
+                        append(line.content)
+                    }
+                    if (idx < styledLines.lastIndex) append('\n')
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+                .verticalScroll(scrollState),
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                lineHeight = androidx.compose.ui.unit.TextUnit(1.55f, androidx.compose.ui.unit.TextUnitType.Em)
+            )
+        )
+    }
+}
+
+private enum class LogLineLevel { ERROR, WARN, INFO, DEBUG, PLAIN }
+private data class ParsedLogLine(val content: String, val level: LogLineLevel)
+
+private fun parseLogLine(raw: String): ParsedLogLine {
+    val trimmed = raw.trimEnd()
+    val level = when {
+        "/E/" in trimmed || " E/" in trimmed ||
+            trimmed.contains("错误", ignoreCase = true) ||
+            trimmed.contains("失败", ignoreCase = true) ||
+            trimmed.contains("Failed", ignoreCase = true) ||
+            trimmed.contains("Exception", ignoreCase = true) -> LogLineLevel.ERROR
+        "/W/" in trimmed || " W/" in trimmed ||
+            trimmed.contains("警告", ignoreCase = true) -> LogLineLevel.WARN
+        "/I/" in trimmed || " I/" in trimmed -> LogLineLevel.INFO
+        "/D/" in trimmed || " D/" in trimmed || trimmed.startsWith("[进度]") || trimmed.startsWith("[") && "] D/" in trimmed -> LogLineLevel.DEBUG
+        else -> LogLineLevel.PLAIN
+    }
+    return ParsedLogLine(trimmed, level)
 }
 
 @Composable

@@ -13,10 +13,13 @@ internal class WorkflowEditorExecutionTracker(
     private val updateExecuteButton: (Boolean) -> Unit,
     private val highlightStep: (Int) -> Unit,
     private val highlightStepAsFailed: (Int) -> Unit,
-    private val clearHighlight: () -> Unit
+    private val clearHighlight: () -> Unit,
+    private val onLogUpdated: ((CharSequence) -> Unit)? = null,
+    private val onExecutionFinished: ((ExecutionState) -> Unit)? = null,
 ) {
     private var currentlyExecutingWorkflowId: String? = null
     private var currentlyExecutingExecutionInstanceId: String? = null
+    private val logBuffer = StringBuilder()
 
     fun observe(scope: LifecycleCoroutineScope, stateFlow: Flow<ExecutionState>) {
         scope.launch {
@@ -26,17 +29,50 @@ internal class WorkflowEditorExecutionTracker(
                 when (state) {
                     is ExecutionState.Running -> handleRunningExecutionState(state)
                     is ExecutionState.Finished, is ExecutionState.Cancelled -> {
+                        appendLogFromState(state)
                         clearExecutionTracking()
                         updateExecuteButton(false)
                         clearHighlight()
+                        onExecutionFinished?.invoke(state)
                     }
                     is ExecutionState.Failure -> {
+                        appendLogFromState(state)
                         clearExecutionTracking()
                         updateExecuteButton(false)
                         highlightStepAsFailed(state.stepIndex)
+                        onExecutionFinished?.invoke(state)
                     }
                 }
             }
+        }
+    }
+
+    /** 追加一条外部日志（例如执行前提示） */
+    fun appendLog(message: CharSequence) {
+        if (message.isEmpty()) return
+        if (logBuffer.isNotEmpty() && !logBuffer.endsWith('\n')) logBuffer.append('\n')
+        logBuffer.append(message)
+        onLogUpdated?.invoke(logBuffer)
+    }
+
+    fun clearLogs() {
+        logBuffer.clear()
+        onLogUpdated?.invoke("")
+    }
+
+    fun getCurrentLog(): CharSequence = logBuffer
+
+    private fun appendLogFromState(state: ExecutionState) {
+        val detailed = when (state) {
+            is ExecutionState.Finished -> state.detailedLog
+            is ExecutionState.Cancelled -> state.detailedLog
+            is ExecutionState.Failure -> state.detailedLog
+            else -> null
+        }
+        if (!detailed.isNullOrEmpty()) {
+            if (logBuffer.isNotEmpty() && !logBuffer.endsWith('\n')) logBuffer.append('\n')
+            logBuffer.append(detailed)
+            onLogUpdated?.invoke(logBuffer)
         }
     }
 
@@ -56,6 +92,8 @@ internal class WorkflowEditorExecutionTracker(
     fun beginExecutionTracking(workflowId: String) {
         currentlyExecutingWorkflowId = workflowId
         currentlyExecutingExecutionInstanceId = null
+        logBuffer.clear()
+        onLogUpdated?.invoke("")
     }
 
     fun finishExecutionLaunch(executionInstanceId: String) {

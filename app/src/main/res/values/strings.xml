@@ -1456,4 +1456,19 @@
     <string name="global_variable_config_invalid_value">变量值不合法</string>
     <string name="global_variable_config_delete_confirm_title">删除全局变量</string>
     <string name="global_variable_config_delete_confirm_message">确定删除全局变量“%1$s”吗？</string>
+    <string name="log_tab_summary">概览</string>
+    <string name="log_tab_details">详细日志</string>
+    <string name="log_label_status">执行状态</string>
+    <string name="log_label_time">执行时间</string>
+    <string name="log_label_workflow">工作流名称</string>
+    <string name="log_label_duration">执行耗时</string>
+    <string name="log_label_step_count">执行步骤</string>
+    <string name="log_label_failed_step">失败步骤</string>
+    <string name="log_value_ms">%1$d ms</string>
+    <string name="log_value_steps">%1$d 步</string>
+    <string name="editor_log_panel_title">执行日志</string>
+    <string name="editor_log_panel_hint">执行工作流后，日志将实时显示在这里…</string>
+    <string name="editor_log_panel_clear">清空</string>
+    <string name="editor_log_panel_copy">复制</string>
+    <string name="editor_log_copied">日志已复制到剪贴板</string>
 </resources>
