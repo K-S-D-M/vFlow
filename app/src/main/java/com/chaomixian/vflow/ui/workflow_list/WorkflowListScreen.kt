@@ -748,16 +748,15 @@ fun WorkflowCard(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                if (hasAutoTriggers) {
-                    Switch(
-                        checked = workflow.isEnabled,
-                        onCheckedChange = onToggleEnabled,
-                        colors = workflowSwitchColors(
-                            colorfulCardsEnabled = colorfulCardsEnabled,
-                            visualColors = visualColors
-                        )
+                // 始终显示开关，方便测试时快速启用/禁用工作流
+                Switch(
+                    checked = workflow.isEnabled,
+                    onCheckedChange = onToggleEnabled,
+                    colors = workflowSwitchColors(
+                        colorfulCardsEnabled = colorfulCardsEnabled,
+                        visualColors = visualColors
                     )
-                }
+                )
 
                 if (isManualTrigger && !hasAutoTriggers) {
                     Box {

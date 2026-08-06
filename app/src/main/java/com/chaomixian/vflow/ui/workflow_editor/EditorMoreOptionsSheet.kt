@@ -53,12 +53,14 @@ class EditorMoreOptionsSheet : BottomSheetDialogFragment() {
     var workflow: Workflow? = null
     var onAiGenerateClicked: (() -> Unit)? = null
     var onUiInspectorClicked: (() -> Unit)? = null
+    var onToggleEnabled: ((Boolean) -> Unit)? = null
     var onMetadataSaved: ((Workflow) -> Unit)? = null
 
     private lateinit var textWorkflowName: TextView
     private lateinit var textWorkflowId: TextView
     private lateinit var textWorkflowModified: TextView
     private lateinit var cardWorkflowInfo: MaterialCardView
+    private lateinit var switchWorkflowEnabled: com.google.android.material.materialswitch.MaterialSwitch
 
     private lateinit var editVersion: com.google.android.material.textfield.TextInputEditText
     private lateinit var editVFlowLevel: com.google.android.material.textfield.TextInputEditText
@@ -129,6 +131,7 @@ class EditorMoreOptionsSheet : BottomSheetDialogFragment() {
         textWorkflowId = view.findViewById(R.id.text_workflow_id)
         textWorkflowModified = view.findViewById(R.id.text_workflow_modified)
         cardWorkflowInfo = view.findViewById(R.id.card_workflow_info)
+        switchWorkflowEnabled = view.findViewById(R.id.switch_more_options_workflow_enabled)
 
         // 初始化元数据编辑视图
         editVersion = view.findViewById(R.id.edit_workflow_version)
@@ -174,6 +177,13 @@ class EditorMoreOptionsSheet : BottomSheetDialogFragment() {
 
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
             textWorkflowModified.text = dateFormat.format(Date(wf.modifiedAt))
+
+            // 启用开关初始化
+            switchWorkflowEnabled.setOnCheckedChangeListener(null)
+            switchWorkflowEnabled.isChecked = wf.isEnabled
+            switchWorkflowEnabled.setOnCheckedChangeListener { _, isChecked ->
+                onToggleEnabled?.invoke(isChecked)
+            }
 
             // 点击卡片复制 ID
             cardWorkflowInfo.setOnClickListener {

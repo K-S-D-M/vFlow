@@ -91,6 +91,7 @@ class WorkflowEditorActivity : BaseActivity() {
     private lateinit var copySelectedButton: ImageButton
     private lateinit var editorMoreButton: ImageButton
     private lateinit var selectionModeButton: com.google.android.material.button.MaterialButton
+    private lateinit var workflowEnabledSwitch: com.google.android.material.materialswitch.MaterialSwitch
     private lateinit var recyclerView: RecyclerView
     private val gson = Gson()
     private val delayedExecuteHandler = Handler(Looper.getMainLooper())
@@ -242,6 +243,7 @@ class WorkflowEditorActivity : BaseActivity() {
         selectionModeButton = findViewById(R.id.button_open_selection_mode)
         undoButton = findViewById(R.id.button_undo_edit)
         executeButton = findViewById(R.id.button_execute_workflow)
+        workflowEnabledSwitch = findViewById(R.id.switch_workflow_enabled)
         recyclerView = findViewById(R.id.recycler_view_action_steps)
         // 日志面板
         editorLogPanel = findViewById(R.id.editor_log_panel)
@@ -356,7 +358,47 @@ class WorkflowEditorActivity : BaseActivity() {
         }
         editorMoreButton.setOnClickListener { showEditorMoreOptionsSheet() }
         selectionModeButton.setOnClickListener { showEditorToolsMenu(it) }
+        setupWorkflowEnabledSwitch()
         updateSelectionUi()
+    }
+
+    /** 工作流启用/禁用开关（便于测试时快速切换）。 */
+    private fun setupWorkflowEnabledSwitch() {
+        currentWorkflow?.let { workflowEnabledSwitch.isChecked = it.isEnabled }
+        workflowEnabledSwitch.setOnCheckedChangeListener { _, isChecked ->
+            val wf = currentWorkflow ?: run {
+                // 尚未加载工作流时先保持最新值，等加载后再覆盖
+                return@setOnCheckedChangeListener
+            }
+            if (wf.isEnabled == isChecked) return@setOnCheckedChangeListener
+            updateWorkflowEnabled(isChecked, syncSwitchFrom = null)
+        }
+    }
+
+    /** 统一更新工作流启用状态（持久化 + Toast + 同步所有开关）。 */
+    internal fun updateWorkflowEnabled(enabled: Boolean, syncSwitchFrom: Any?) {
+        val wf = currentWorkflow ?: return
+        if (wf.isEnabled == enabled) return
+        val updated = wf.copy(
+            isEnabled = enabled,
+            wasEnabledBeforePermissionsLost = false
+        )
+        currentWorkflow = updated
+        workflowManager.saveWorkflow(updated)
+        // 同步工具栏开关，避免重复触发 OnCheckedChangeListener
+        if (syncSwitchFrom !== workflowEnabledSwitch) {
+            workflowEnabledSwitch.setOnCheckedChangeListener(null)
+            workflowEnabledSwitch.isChecked = enabled
+            workflowEnabledSwitch.setOnCheckedChangeListener { _, c ->
+                if (currentWorkflow?.isEnabled != c) {
+                    updateWorkflowEnabled(c, syncSwitchFrom = workflowEnabledSwitch)
+                }
+            }
+        }
+        toast(
+            if (enabled) getString(R.string.editor_toast_workflow_enabled)
+            else getString(R.string.editor_toast_workflow_disabled)
+        )
     }
 
     // ==========================
@@ -1669,6 +1711,14 @@ class WorkflowEditorActivity : BaseActivity() {
                 actionSteps.clear()
                 triggerSteps.addAll(it.triggers)
                 actionSteps.addAll(it.steps)
+                // 同步启用开关状态（先移除监听器避免触发不必要的保存）
+                workflowEnabledSwitch.setOnCheckedChangeListener(null)
+                workflowEnabledSwitch.isChecked = it.isEnabled
+                workflowEnabledSwitch.setOnCheckedChangeListener { _, c ->
+                    if (currentWorkflow?.isEnabled != c) {
+                        updateWorkflowEnabled(c, syncSwitchFrom = workflowEnabledSwitch)
+                    }
+                }
             }
         }
         executionTracker.syncExecutionUiForWorkflow(currentWorkflow)
@@ -2077,6 +2127,9 @@ class WorkflowEditorActivity : BaseActivity() {
         sheet.onUiInspectorClicked = {
             dismissAllSheets()
             inspectorInsertController.startInspector()
+        }
+        sheet.onToggleEnabled = { enabled ->
+            updateWorkflowEnabled(enabled, syncSwitchFrom = sheet)
         }
         sheet.onMetadataSaved = { updatedWorkflow ->
             currentWorkflow = updatedWorkflow
